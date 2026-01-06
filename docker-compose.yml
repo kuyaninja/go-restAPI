@@ -1,4 +1,20 @@
 services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: skeleton-app
+    restart: unless-stopped
+    environment:
+      APP_ENV: docker
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./logs:/app/logs
+      - ./resources:/app/resources
+    depends_on:
+      - mysql
+      #- redis
   mysql:
     image: mysql:8.0
     container_name: skeleton-mysql

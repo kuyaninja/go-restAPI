@@ -16,7 +16,7 @@ func TestGetPostSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, server.Client())
+	client := NewClient(server.URL, nil)
 	post, err := client.GetPost(context.Background(), "2")
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -42,7 +42,7 @@ func TestGetPostUnexpectedStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, server.Client())
+	client := NewClient(server.URL, nil)
 	if _, err := client.GetPost(context.Background(), "1"); err == nil {
 		t.Fatalf("expected error when status not 200")
 	}
@@ -54,7 +54,7 @@ func TestGetPostDecodeError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewClient(server.URL, server.Client())
+	client := NewClient(server.URL, nil)
 	if _, err := client.GetPost(context.Background(), "3"); err == nil {
 		t.Fatalf("expected decode error")
 	}

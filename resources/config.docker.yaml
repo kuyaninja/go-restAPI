@@ -1,0 +1,33 @@
+app:
+  name: "Skeleton API (docker)"
+  versions:
+    - "v1"
+    - "v2"
+  secret: "docker-secret"
+  locale: "en"
+http:
+  port: "8080"
+database:
+  host: "mysql"
+  port: 3306
+  user: "skeleton"
+  password: "secret"
+  name: "skeleton_local"
+  sslmode: "disable"
+  log_queries: true
+logging:
+  file: ""
+  max_size_mb: 10
+  max_backups: 5
+  max_age_days: 30
+  compress: false
+external:
+  jsonplaceholder_url: "https://jsonplaceholder.typicode.com"
+auth:
+  access_token_ttl_minutes: 60
+  refresh_token_ttl_minutes: 4320
+redis:
+  host: "host.docker.internal"
+  port: 6379
+  password: ""
+  db: 0

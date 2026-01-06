@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
+
+	"github.com/gofiber/fiber/v2"
 )
 
 const (
@@ -16,15 +16,15 @@ const (
 	defaultHTTPTimeout = 10 * time.Second
 )
 
-// HTTPClient describes the subset of http.Client used by the placeholder client.
+// HTTPClient describes the subset of Fiber's client used by the placeholder client.
 type HTTPClient interface {
-	Do(req *http.Request) (*http.Response, error)
+	Get(url string) *fiber.Agent
 }
 
 // Client coordinates calls to the JSONPlaceholder API.
 type Client struct {
-	baseURL    string
-	httpClient HTTPClient
+	baseURL string
+	http    HTTPClient
 }
 
 // Post mirrors the response from the JSONPlaceholder /posts endpoint.
@@ -35,7 +35,7 @@ type Post struct {
 	Body   string `json:"body"`
 }
 
-// Sentinel errors returned by the client.
+// ErrMissingPostID Sentinel errors returned by the client.
 var (
 	ErrMissingPostID = errors.New("post id is required")
 )
@@ -50,10 +50,10 @@ func NewClient(baseURL string, httpClient HTTPClient) *Client {
 	}
 
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
+		httpClient = &fiber.Client{}
 	}
 
-	return &Client{baseURL: trimmed, httpClient: httpClient}
+	return &Client{baseURL: trimmed, http: httpClient}
 }
 
 // GetPost fetches a post by id from JSONPlaceholder.
@@ -64,25 +64,38 @@ func (c *Client) GetPost(ctx context.Context, id string) (Post, error) {
 	}
 
 	url := fmt.Sprintf("%s/posts/%s", c.baseURL, strings.TrimSpace(id))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return post, err
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return post, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return post, fmt.Errorf("jsonplaceholder: unexpected status %d: %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
+	agent := c.http.Get(url)
+	agent.Timeout(resolveTimeout(ctx))
+	status, body, errs := agent.Bytes()
+	if len(errs) > 0 {
+		return post, errs[0]
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&post); err != nil {
+	if status != fiber.StatusOK {
+		snippet := strings.TrimSpace(string(body))
+		if len(snippet) > 512 {
+			snippet = snippet[:512]
+		}
+		return post, fmt.Errorf("jsonplaceholder: unexpected status %d: %s", status, snippet)
+	}
+
+	if err := json.Unmarshal(body, &post); err != nil {
 		return post, err
 	}
 
 	return post, nil
+}
+
+func resolveTimeout(ctx context.Context) time.Duration {
+	if deadline, ok := ctx.Deadline(); ok {
+		remaining := time.Until(deadline)
+		if remaining > 0 && remaining < defaultHTTPTimeout {
+			return remaining
+		}
+	}
+	return defaultHTTPTimeout
 }

@@ -3,8 +3,11 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/viper"
 )
 
 // Config aggregates runtime configuration values grouped by concern.
@@ -97,15 +100,22 @@ func Load() *Config {
 		env = defaultEnv
 	}
 
-	filename := fmt.Sprintf("%s/%s", configDir, fmt.Sprintf(configTpl, env))
+	v := viper.New()
+	filename := fmt.Sprintf(configTpl, env)
+	v.SetConfigFile(filepath.Join(configDir, filename))
+	v.SetConfigType("yaml")
+	v.SetEnvPrefix("APP")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
 
-	data, err := os.ReadFile(filename)
-	if err != nil {
+	if err := v.ReadInConfig(); err != nil {
 		panic(fmt.Errorf("config: failed to read %s: %w", filename, err))
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	if err := v.Unmarshal(&cfg, func(dc *mapstructure.DecoderConfig) {
+		dc.TagName = "yaml"
+	}); err != nil {
 		panic(fmt.Errorf("config: failed to decode %s: %w", filename, err))
 	}
 

@@ -2,13 +2,13 @@ package logger
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
-	"sync"
-	"time"
 
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 
 	"skeleton-go/pkg/session"
@@ -17,10 +17,9 @@ import (
 // Fields attaches extra metadata to a log entry.
 type Fields map[string]interface{}
 
-// Logger writes structured JSON entries, including session metadata when present.
+// Logger wraps a zap.Logger with convenience helpers.
 type Logger struct {
-	writers []io.Writer
-	mu      sync.Mutex
+	base *zap.Logger
 }
 
 // Options configure how the logger writes to disk in addition to stdout.
@@ -32,75 +31,119 @@ type Options struct {
 	Compress   bool
 }
 
-// New constructs a logger that writes to stdout and, if configured, a rotating file.
+const dbLogLevel zapcore.Level = zapcore.FatalLevel + 1
+
+// New constructs a zap-backed logger that writes to stdout and, if configured, a rotating file.
 func New(opts Options) (*Logger, error) {
-	writers := []io.Writer{os.Stdout}
+	encoder := zapcore.NewJSONEncoder(encoderConfig())
+
+	cores := []zapcore.Core{zapcore.NewCore(encoder, zapcore.AddSync(os.Stdout), zap.LevelEnablerFunc(allLevelsEnabled))}
+
 	if opts.File != "" {
 		if err := os.MkdirAll(filepath.Dir(opts.File), 0o755); err != nil {
 			return nil, err
 		}
-		writers = append(writers, &lumberjack.Logger{
+		lumberjackWriter := &lumberjack.Logger{
 			Filename:   opts.File,
 			MaxSize:    opts.MaxSizeMB,
 			MaxBackups: opts.MaxBackups,
 			MaxAge:     opts.MaxAgeDays,
 			Compress:   opts.Compress,
-		})
+		}
+		cores = append(cores, zapcore.NewCore(encoder, zapcore.AddSync(lumberjackWriter), zap.LevelEnablerFunc(allLevelsEnabled)))
 	}
 
-	return &Logger{writers: writers}, nil
+	base := zap.New(zapcore.NewTee(cores...))
+	return &Logger{base: base}, nil
 }
 
 // Info writes an informational log entry.
 func (l *Logger) Info(ctx context.Context, message string, fields Fields) {
-	l.write(ctx, "info", message, fields)
+	l.write(ctx, zapcore.InfoLevel, message, fields)
 }
 
 // Error writes an error log entry and captures the error text inside the fields map.
 func (l *Logger) Error(ctx context.Context, message string, err error, fields Fields) {
-	if fields == nil {
-		fields = Fields{}
-	}
-
 	if err != nil {
+		if fields == nil {
+			fields = Fields{}
+		}
 		fields["error"] = err.Error()
 	}
-
-	l.write(ctx, "error", message, fields)
+	l.write(ctx, zapcore.ErrorLevel, message, fields)
 }
 
 // DB records database-layer interactions, keeping them distinct for log filters.
 func (l *Logger) DB(ctx context.Context, message string, fields Fields) {
-	l.write(ctx, "db", message, fields)
+	l.write(ctx, dbLogLevel, message, fields)
 }
 
-func (l *Logger) write(ctx context.Context, level, message string, fields Fields) {
-	if l == nil {
+func (l *Logger) write(ctx context.Context, level zapcore.Level, message string, fields Fields) {
+	if l == nil || l.base == nil {
 		return
 	}
 
-	entry := map[string]interface{}{
-		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
-		"level":     level,
-		"message":   message,
+	ce := l.base.Check(level, message)
+	if ce == nil {
+		return
 	}
 
+	zapFields := make([]zap.Field, 0, len(fields)+2)
 	if sess := session.FromContext(ctx); sess != nil {
-		entry["session_id"] = sess.ID
+		zapFields = append(zapFields, zap.String("session_id", sess.ID))
 	}
-
 	if len(fields) > 0 {
-		entry["fields"] = fields
+		zapFields = append(zapFields, zap.Any("fields", fields))
 	}
+	ce.Write(zapFields...)
+}
 
-	payload, err := json.Marshal(entry)
-	if err != nil {
+func encoderConfig() zapcore.EncoderConfig {
+	return zapcore.EncoderConfig{
+		TimeKey:        "timestamp",
+		LevelKey:       "level",
+		MessageKey:     "message",
+		CallerKey:      "",
+		StacktraceKey:  "",
+		EncodeTime:     zapcore.RFC3339TimeEncoder,
+		EncodeLevel:    encodeLevel,
+		EncodeDuration: zapcore.SecondsDurationEncoder,
+	}
+}
+
+func encodeLevel(level zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
+	if level == dbLogLevel {
+		enc.AppendString("db")
 		return
 	}
+	zapcore.LowercaseLevelEncoder(level, enc)
+}
 
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	for _, writer := range l.writers {
-		writer.Write(append(payload, '\n'))
+func allLevelsEnabled(zapcore.Level) bool {
+	return true
+}
+
+// Sync flushes buffered logs.
+func (l *Logger) Sync() error {
+	if l == nil || l.base == nil {
+		return nil
 	}
+	return l.base.Sync()
+}
+
+// NewTestLogger exposes a zap logger backed by the provided writer. Used in tests.
+func newTestLogger(writer io.Writer) *Logger {
+	encoder := zapcore.NewJSONEncoder(encoderConfig())
+	core := zapcore.NewCore(encoder, zapcore.AddSync(writer), zap.LevelEnablerFunc(allLevelsEnabled))
+	return &Logger{base: zap.New(core)}
+}
+
+var errNilLogger = errors.New("logger not initialized")
+
+// Base exposes the underlying zap logger for advanced use.
+func (l *Logger) Base() (*zap.Logger, error) {
+	if l == nil || l.base == nil {
+		return nil, errNilLogger
+	}
+	return l.base, nil
 }

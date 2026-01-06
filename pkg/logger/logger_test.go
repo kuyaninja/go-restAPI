@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -19,7 +18,7 @@ import (
 
 func TestLoggerWritesJSONWithSession(t *testing.T) {
 	var buf bytes.Buffer
-	log := &Logger{writers: []io.Writer{&buf}}
+	log := newTestLogger(&buf)
 	ctx := session.ContextWithSession(context.Background(), &session.Session{ID: "abc"})
 	log.Info(ctx, "hello", Fields{"foo": "bar"})
 
@@ -38,7 +37,7 @@ func TestLoggerWritesJSONWithSession(t *testing.T) {
 
 func TestLoggerErrorAddsErrorField(t *testing.T) {
 	var buf bytes.Buffer
-	log := &Logger{writers: []io.Writer{&buf}}
+	log := newTestLogger(&buf)
 	log.Error(context.Background(), "oops", errors.New("boom"), nil)
 
 	entry := parseLog(t, buf.String())
@@ -50,7 +49,7 @@ func TestLoggerErrorAddsErrorField(t *testing.T) {
 
 func TestLoggerDBWritesMessage(t *testing.T) {
 	var buf bytes.Buffer
-	log := &Logger{writers: []io.Writer{&buf}}
+	log := newTestLogger(&buf)
 	log.DB(context.Background(), "query", Fields{"sql": "select"})
 	entry := parseLog(t, buf.String())
 	if entry["level"] != "db" {
@@ -79,7 +78,7 @@ func TestNewWithoutFile(t *testing.T) {
 
 func TestHTTPLoggerLogsAndSanitizes(t *testing.T) {
 	var buf bytes.Buffer
-	log := &Logger{writers: []io.Writer{&buf}}
+	log := newTestLogger(&buf)
 	app := fiber.New()
 	app.Use(HTTPLogger(log))
 	app.Post("/login", func(c *fiber.Ctx) error {
@@ -118,7 +117,7 @@ func TestHTTPLoggerWithNilLoggerSkipsLogging(t *testing.T) {
 
 func TestHTTPLoggerLogsErrorsAndServerFailures(t *testing.T) {
 	var buf bytes.Buffer
-	log := &Logger{writers: []io.Writer{&buf}}
+	log := newTestLogger(&buf)
 	app := fiber.New()
 	app.Use(HTTPLogger(log))
 	app.Get("/error", func(*fiber.Ctx) error {

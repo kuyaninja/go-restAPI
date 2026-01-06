@@ -31,6 +31,16 @@ Login returns both an access token (used in the `Authorization` header) and a re
 
 Call `POST /api/v1/auth/logout` (with your access token) to revoke the refresh token and force a new login. Configure TTLs through the `auth` section in `resources/config.<env>.yaml` and point the refresh-token store at your Redis deployment via `redis.*` values.
 
+### Run the API inside Docker
+
+Build the application image and run it together with MySQL/Redis using Docker Compose:
+
+```bash
+docker compose up -d --build app mysql redis
+```
+
+The container uses the `resources/config.docker.yaml` configuration (via `APP_ENV=docker`). By default it still talks to the compose-managed MySQL service, but the Redis host is set to `host.docker.internal` so it reuses the Redis instance running on your machine. If you prefer to run Redis in Docker, change that host back to `redis` and re-enable the compose service. Host folders are mounted at runtime so you can tail `logs/` or edit files under `resources/` without rebuilding. Logs also go to stdout/stderr—use `docker logs skeleton-app` to inspect them.
+
 ### Third-party example endpoint
 
 Set `external.jsonplaceholder_url` if you want to point the sample integration somewhere else. The proxy lives under `/api/v1` and requires the same auth token as the rest of the protected routes. Once you log in, hit it with:
@@ -64,6 +74,7 @@ Response messages are localized by default in Indonesian (`locale: "id"`), with 
 ## Environment Notes
 
 - Change `resources/config.<env>.yaml` to customize connection info, logging rotation, or JWT secrets.
+- Runtime overrides are supported via environment variables thanks to Viper; prefix keys with `APP_` (for example `APP_HTTP_PORT=9090` or `APP_REDIS_HOST=host.docker.internal`).
 - The compose volume `mysql_data` persists DB data between runs; remove it (`docker volume rm skeleton-go_mysql_data`) to reset.
 
 ## License
