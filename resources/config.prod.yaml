@@ -1,0 +1,32 @@
+app:
+  name: "Skeleton API"
+  versions:
+    - "v1"
+  secret: "prod-secret"
+  locale: "id"
+http:
+  port: "80"
+database:
+  host: "prod-db.internal"
+  port: 3306
+  user: "skeleton_prod"
+  password: "prodpassword"
+  name: "skeleton_prod"
+  sslmode: "verify-full"
+  log_queries: false
+logging:
+  file: "logs/app.log"
+  max_size_mb: 100
+  max_backups: 10
+  max_age_days: 60
+  compress: true
+external:
+  jsonplaceholder_url: "https://jsonplaceholder.typicode.com"
+auth:
+  access_token_ttl_minutes: 60
+  refresh_token_ttl_minutes: 4320
+redis:
+  host: "redis.internal"
+  port: 6379
+  password: ""
+  db: 0

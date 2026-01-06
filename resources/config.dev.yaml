@@ -1,0 +1,32 @@
+app:
+  name: "Skeleton API (dev)"
+  versions:
+    - "v1"
+  secret: "dev-secret"
+  locale: "id"
+http:
+  port: "8081"
+database:
+  host: "dev-db.internal"
+  port: 3306
+  user: "skeleton_dev"
+  password: "devpassword"
+  name: "skeleton_dev"
+  sslmode: "require"
+  log_queries: false
+logging:
+  file: "logs/app.log"
+  max_size_mb: 10
+  max_backups: 5
+  max_age_days: 30
+  compress: true
+external:
+  jsonplaceholder_url: "https://jsonplaceholder.typicode.com"
+auth:
+  access_token_ttl_minutes: 60
+  refresh_token_ttl_minutes: 4320
+redis:
+  host: "localhost"
+  port: 6379
+  password: ""
+  db: 0
